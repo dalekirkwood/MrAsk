@@ -31,17 +31,10 @@ parts:
     source: .
     organize:
       ask-cli/usr/bin/ask: bin/mrask
-    stage-packages:
-      - jq
-      - curl
-      - fzf
-      - bash
-      - less
-    build-packages:
-      - jq
-      - curl
-      - fzf
-      - bash
+      snap/local/launcher.sh: bin/mrask-launcher
+    override-build: |
+      snapcraftctl build
+      chmod +x $SNAPCRAFT_PART_INSTALL/bin/mrask-launcher
 
 apps:
   mrask:

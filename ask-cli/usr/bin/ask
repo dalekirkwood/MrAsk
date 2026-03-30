@@ -58,17 +58,23 @@ check_cache() {
     return 1
 }
 
-# Save response to cache
+# Save response to cache (only if valid)
 save_cache() {
     local question="$1"
     local response="$2"
+    
+    # Only cache if response is valid JSON with choices
+    if ! echo "$response" | jq -e '.choices' > /dev/null 2>&1; then
+        return 1
+    fi
+    
     local cache_key
     cache_key=$(get_cache_key "$question")
     local cache_file="$RESPONSE_CACHE_DIR/${cache_key}.json"
     
     # Limit cache to 100 files
-    if [[ $(ls -1 "$RESPONSE_CACHE_DIR" | wc -l) -gt 100 ]]; then
-        ls -1t "$RESPONSE_CACHE_DIR" | tail -n +101 | xargs -I {} rm -f "$RESPONSE_CACHE_DIR/{}"
+    if [[ $(ls -1 "$RESPONSE_CACHE_DIR" 2>/dev/null | wc -l) -gt 100 ]]; then
+        ls -1t "$RESPONSE_CACHE_DIR" 2>/dev/null | tail -n +101 | xargs -I {} rm -f "$RESPONSE_CACHE_DIR/{}"
     fi
     
     echo "$response" > "$cache_file"
@@ -240,7 +246,6 @@ EOF
     (curl -s -w "\n%{http_code}" "$ENDPOINT" \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $API_KEY" \
-        -H "Accept-Encoding: gzip" \
         -H "HTTP-Referer: https://github.com/dalekirkwood/MrAsk" \
         -H "X-Title: MrAsk" \
         --connect-timeout 10 \
