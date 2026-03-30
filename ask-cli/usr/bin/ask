@@ -10,28 +10,68 @@ fi
 CONFIG_FILE="$CONFIG_DIR/config.conf"
 HISTORY_FILE="$CONFIG_DIR/history.json"
 CACHE_DIR="$HOME/.cache/ask"
+RESPONSE_CACHE_DIR="$CACHE_DIR/responses"
 
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$CACHE_DIR"
+mkdir -p "$RESPONSE_CACHE_DIR"
 
-# Fast models: openai/gpt-4o-mini, google/gemini-2.5-flash-preview
-DEFAULT_MODEL="openai/gpt-4o-mini"
+DEFAULT_MODEL="openrouter/auto"
 DEFAULT_ENDPOINT="https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_TIMEOUT="60"
 
-# Spinner function for progress indicator
+# Spinner animation
 spinner() {
     local pid=$1
     local delay=0.1
-    local spinstr='|/-\'
-    while ps -p $pid > /dev/null 2>&1; do
+    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    while kill -0 "$pid" 2>/dev/null; do
         local temp=${spinstr#?}
-        printf " [%c]  " "$spinstr"
-        local spinstr=$temp${spinstr%"$temp"}
+        printf "\r%s Querying AI... (%s)" "${spinstr:0:1}" "$MODEL"
+        spinstr=$temp${spinstr:0:1}
         sleep $delay
-        printf "\b\b\b\b\b\b"
     done
-    printf "    \b\b\b\b"
+    printf "\r\n"
+}
+
+# Get cache key for a question
+get_cache_key() {
+    local question="$1"
+    echo "$question" | sha256sum | cut -d' ' -f1
+}
+
+# Check cache for existing response
+check_cache() {
+    local question="$1"
+    local cache_key
+    cache_key=$(get_cache_key "$question")
+    local cache_file="$RESPONSE_CACHE_DIR/${cache_key}.json"
+    
+    if [[ -f "$cache_file" ]]; then
+        local age
+        age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file") ))
+        # Cache valid for 24 hours (86400 seconds)
+        if [[ $age -lt 86400 ]]; then
+            cat "$cache_file"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Save response to cache
+save_cache() {
+    local question="$1"
+    local response="$2"
+    local cache_key
+    cache_key=$(get_cache_key "$question")
+    local cache_file="$RESPONSE_CACHE_DIR/${cache_key}.json"
+    
+    # Limit cache to 100 files
+    if [[ $(ls -1 "$RESPONSE_CACHE_DIR" | wc -l) -gt 100 ]]; then
+        ls -1t "$RESPONSE_CACHE_DIR" | tail -n +101 | xargs -I {} rm -f "$RESPONSE_CACHE_DIR/{}"
+    fi
+    
+    echo "$response" > "$cache_file"
 }
 
 load_config() {
@@ -41,7 +81,6 @@ load_config() {
     API_KEY=$(echo "${API_KEY:-}" | tr -d '[:cntrl:]')
     MODEL=$(echo "${MODEL:-$DEFAULT_MODEL}" | tr -d '[:cntrl:]')
     ENDPOINT=$(echo "${ENDPOINT:-$DEFAULT_ENDPOINT}" | tr -d '[:cntrl:]')
-    TIMEOUT=$(echo "${TIMEOUT:-$DEFAULT_TIMEOUT}" | tr -d '[:cntrl:]')
 }
 
 save_config() {
@@ -49,12 +88,10 @@ save_config() {
     API_KEY=$(echo "$API_KEY" | tr -d '[:cntrl:]')
     MODEL=$(echo "$MODEL" | tr -d '[:cntrl:]')
     ENDPOINT=$(echo "$ENDPOINT" | tr -d '[:cntrl:]')
-    TIMEOUT=$(echo "${TIMEOUT:-$DEFAULT_TIMEOUT}" | tr -d '[:cntrl:]')
     cat > "$CONFIG_FILE" << EOF
 API_KEY="$API_KEY"
 MODEL="$MODEL"
 ENDPOINT="$ENDPOINT"
-TIMEOUT="$TIMEOUT"
 EOF
     chmod 600 "$CONFIG_FILE"
     echo "Configuration saved to $CONFIG_FILE"
@@ -65,12 +102,6 @@ config_interactive() {
     echo "====================="
     echo ""
     
-    echo "Recommended fast models:"
-    echo "  openai/gpt-4o-mini        (fast, cheap)"
-    echo "  google/gemini-2.5-flash-preview (fast)"
-    echo "  google/gemini-2.0-flash-lite-preview-02-05 (fastest)"
-    echo ""
-    
     read -rp "Enter your OpenRouter API Key: " -s input_key
     echo ""
     if [[ -n "$input_key" ]]; then
@@ -79,17 +110,12 @@ config_interactive() {
     
     read -rp "Enter model (default: $DEFAULT_MODEL) [$MODEL]: " input_model
     if [[ -n "$input_model" ]]; then
-        MODEL=$(echo "$input_model" | tr -d '[:cntrl:]')
-    fi
-    
-    read -rp "Enter timeout in seconds (default: $DEFAULT_TIMEOUT) [$TIMEOUT]: " input_timeout
-    if [[ -n "$input_timeout" ]]; then
-        TIMEOUT=$(echo "$input_timeout" | tr -d '[:cntrl:]')
+        MODEL="$input_model"
     fi
     
     read -rp "Enter API endpoint (default: $DEFAULT_ENDPOINT) [$ENDPOINT]: " input_endpoint
     if [[ -n "$input_endpoint" ]]; then
-        ENDPOINT=$(echo "$input_endpoint" | tr -d '[:cntrl:]')
+        ENDPOINT="$input_endpoint"
     fi
     
     save_config
@@ -105,13 +131,7 @@ Usage:
   ask -h, --history   View command history
   ask -k, --key KEY   Set API key directly
   ask -m, --model MODEL  Set model directly
-  ask -t, --timeout SEC  Set timeout in seconds (default: 60)
   ask --help          Show this help
-
-Recommended fast models:
-  openai/gpt-4o-mini
-  google/gemini-2.5-flash-preview
-  google/gemini-2.0-flash-lite-preview-02-05
 
 During command selection:
   Enter   Run the selected command
@@ -198,43 +218,33 @@ call_ai() {
         return 1
     fi
     
+    # Check cache first
+    local cached_response
+    if cached_response=$(check_cache "$question"); then
+        echo "Using cached response" >&2
+        echo "$cached_response"
+        return 0
+    fi
+    
     local system_prompt
     system_prompt=$(cat << 'EOF'
-You are a helpful command-line assistant. Given a user's question, provide relevant shell commands that would help them.
-
-IMPORTANT: You must respond in the following JSON format only:
-{
-    "commands": [
-        {
-            "command": "the actual command to run",
-            "explanation": "brief explanation of what this command does",
-            "danger_level": "safe|warning|dangerous"
-        }
-    ]
-}
-
-Rules:
-- Provide 3-5 relevant commands
-- Mark dangerous commands (rm -rf, dd, etc.) as "dangerous"
-- Mark potentially destructive commands as "warning"
-- Keep commands simple and copy-pasteable
-- Include common variations if useful
-- If the question is unclear, provide the most likely interpretation
+Provide shell commands as JSON. Format: {"commands":[{"command":"cmd","explanation":"desc","danger_level":"safe|warning|dangerous"}]}. Provide 3-5 commands. Mark rm -rf, dd as dangerous.
 EOF
 )
     
-    # Show progress indicator
-    printf "Querying AI (%s) " "$MODEL"
+    # Create temp file for curl output
+    local temp_curl_out
+    temp_curl_out=$(mktemp)
     
-    local response
-    local curl_pid
-    
-    # Run curl in background with timeout
-    response=$(curl -s -w "\n%{http_code}" --max-time "${TIMEOUT:-60}" "$ENDPOINT" \
+    # Start curl in background
+    (curl -s -w "\n%{http_code}" "$ENDPOINT" \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $API_KEY" \
-        -H "HTTP-Referer: https://github.com/ask-cli" \
-        -H "X-Title: Ask CLI" \
+        -H "Accept-Encoding: gzip" \
+        -H "HTTP-Referer: https://github.com/dalekirkwood/MrAsk" \
+        -H "X-Title: MrAsk" \
+        --connect-timeout 10 \
+        --max-time 60 \
         -d "$(jq -n \
             --arg model "$MODEL" \
             --arg system "$system_prompt" \
@@ -245,26 +255,23 @@ EOF
                     {role: "system", content: $system},
                     {role: "user", content: $user}
                 ]
-            }')" 2>/dev/null) &
+            }')" > "$temp_curl_out" 2>/dev/null) &
     
-    curl_pid=$!
+    local curl_pid=$!
     
-    # Show spinner while curl runs
+    # Show spinner while waiting
     spinner $curl_pid
     
-    # Wait for curl to complete
+    # Wait for curl to finish
     wait $curl_pid
     local curl_exit=$?
     
-    printf "\n"
+    local response
+    response=$(cat "$temp_curl_out")
+    rm -f "$temp_curl_out"
     
-    # Check if curl timed out
-    if [[ $curl_exit -eq 28 ]]; then
-        echo "Error: Request timed out after ${TIMEOUT:-60} seconds" >&2
-        echo "Try a faster model or increase timeout with: ask -c" >&2
-        return 1
-    elif [[ $curl_exit -ne 0 ]]; then
-        echo "Error: Connection failed (exit code: $curl_exit)" >&2
+    if [[ $curl_exit -ne 0 ]]; then
+        echo "Error: API request timed out or failed" >&2
         return 1
     fi
     
@@ -278,6 +285,9 @@ EOF
         echo "$body" | jq -r '.error.message // .' 2>/dev/null || echo "$body" >&2
         return 1
     fi
+    
+    # Save to cache
+    save_cache "$question" "$body"
     
     echo "$body"
 }
@@ -299,17 +309,41 @@ select_and_run() {
     temp_commands=$(mktemp)
     echo "$commands_json" > "$temp_commands"
     
+    # Create preview script to avoid escaping issues
+    local preview_script
+    preview_script=$(mktemp)
+    cat > "$preview_script" << 'SCRIPT'
+#!/bin/bash
+line="$1"
+file="$2"
+cmd=$(echo "$line" | sed 's/^\[[^]]*\] //')
+jq -r --arg cmd "$cmd" '.commands[] | select(.command == $cmd) | .explanation' "$file"
+SCRIPT
+    chmod +x "$preview_script"
+    
+    # Create info script
+    local info_script
+    info_script=$(mktemp)
+    cat > "$info_script" << 'SCRIPT'
+#!/bin/bash
+line="$1"
+file="$2"
+cmd=$(echo "$line" | sed 's/^\[[^]]*\] //')
+jq -r --arg cmd "$cmd" '.commands[] | select(.command == $cmd) | "Command: \(.command)\n\nExplanation: \(.explanation)\n\nDanger Level: \(.danger_level)"' "$file" | less -R
+SCRIPT
+    chmod +x "$info_script"
+    
     local selected_line
     selected_line=$(jq -r '.commands[] | "[\(.danger_level)] \(.command)"' "$temp_commands" | \
         fzf \
-            --preview='jq -r ".commands[] | select(.command == \"$(echo {} | sed '\''s/^\[.*\] //'\'')\") | .explanation" '"$temp_commands" \
+            --preview="$preview_script {} $temp_commands" \
             --preview-window=right:50%:wrap \
-            --bind='i:execute(jq -r ".commands[] | select(.command == \"$(echo {} | sed '\''s/^\[.*\] //'\'')\") | \"Command: \(.command)\n\nExplanation: \(.explanation)\n\nDanger Level: \(.danger_level)\"" '"$temp_commands"' | less -R)' \
+            --bind="i:execute($info_script {} $temp_commands)" \
             --header="Select a command (Enter=run, i=detailed info, q=quit)" \
             --height=80% \
             --layout=reverse)
     
-    rm -f "$temp_commands"
+    rm -f "$temp_commands" "$preview_script" "$info_script"
     
     if [[ -n "$selected_line" ]]; then
         local cmd
@@ -360,16 +394,6 @@ main() {
             fi
             MODEL=$(echo "$2" | tr -d '[:cntrl:]')
             save_config
-            exit 0
-            ;;
-        -t|--timeout)
-            if [[ -z "$2" ]]; then
-                echo "Error: Timeout value required" >&2
-                exit 1
-            fi
-            TIMEOUT=$(echo "$2" | tr -d '[:cntrl:]')
-            save_config
-            echo "Timeout set to $TIMEOUT seconds"
             exit 0
             ;;
         --help|-help)

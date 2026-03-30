@@ -27,8 +27,7 @@ assets:
   stage-snaps: null
 directories: !!set {}
 files: !!set {}
-outdated_dirs:
-- .git
+outdated_dirs: []
 outdated_files:
 - ask-cli/DEBIAN/control
 - ask-cli/usr/bin/ask
