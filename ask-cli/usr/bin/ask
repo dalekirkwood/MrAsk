@@ -1,0 +1,337 @@
+#!/bin/bash
+
+CONFIG_FILE="$HOME/.config/ask/config.conf"
+HISTORY_FILE="$HOME/.config/ask/history.json"
+CACHE_DIR="$HOME/.cache/ask"
+
+mkdir -p "$(dirname "$CONFIG_FILE")"
+mkdir -p "$CACHE_DIR"
+
+DEFAULT_MODEL="openrouter/auto"
+DEFAULT_ENDPOINT="https://openrouter.ai/api/v1/chat/completions"
+
+load_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        source "$CONFIG_FILE"
+    fi
+    API_KEY=$(echo "${API_KEY:-}" | tr -d '[:cntrl:]')
+    MODEL=$(echo "${MODEL:-$DEFAULT_MODEL}" | tr -d '[:cntrl:]')
+    ENDPOINT=$(echo "${ENDPOINT:-$DEFAULT_ENDPOINT}" | tr -d '[:cntrl:]')
+}
+
+save_config() {
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    API_KEY=$(echo "$API_KEY" | tr -d '[:cntrl:]')
+    MODEL=$(echo "$MODEL" | tr -d '[:cntrl:]')
+    ENDPOINT=$(echo "$ENDPOINT" | tr -d '[:cntrl:]')
+    cat > "$CONFIG_FILE" << EOF
+API_KEY="$API_KEY"
+MODEL="$MODEL"
+ENDPOINT="$ENDPOINT"
+EOF
+    chmod 600 "$CONFIG_FILE"
+    echo "Configuration saved to $CONFIG_FILE"
+}
+
+config_interactive() {
+    echo "Ask CLI Configuration"
+    echo "====================="
+    echo ""
+    
+    read -rp "Enter your OpenRouter API Key: " -s input_key
+    echo ""
+    if [[ -n "$input_key" ]]; then
+        API_KEY=$(echo "$input_key" | tr -d '[:cntrl:]')
+    fi
+    
+    read -rp "Enter model (default: $DEFAULT_MODEL) [$MODEL]: " input_model
+    if [[ -n "$input_model" ]]; then
+        MODEL="$input_model"
+    fi
+    
+    read -rp "Enter API endpoint (default: $DEFAULT_ENDPOINT) [$ENDPOINT]: " input_endpoint
+    if [[ -n "$input_endpoint" ]]; then
+        ENDPOINT="$input_endpoint"
+    fi
+    
+    save_config
+}
+
+show_help() {
+    cat << EOF
+Ask CLI - AI-powered command suggestions
+
+Usage:
+  ask QUESTION        Ask AI for command suggestions
+  ask -c, --config    Configure API settings
+  ask -h, --history   View command history
+  ask -k, --key KEY   Set API key directly
+  ask -m, --model MODEL  Set model directly
+  ask --help          Show this help
+
+During command selection:
+  Enter   Run the selected command
+  i       Show explanation for the highlighted command
+  q/Esc   Quit without running
+
+Configuration is stored in: ~/.config/ask/config.conf
+History is stored in: ~/.config/ask/history.json
+EOF
+}
+
+init_history() {
+    if [[ ! -f "$HISTORY_FILE" ]]; then
+        echo "[]" > "$HISTORY_FILE"
+    fi
+}
+
+add_to_history() {
+    local question="$1"
+    local command="$2"
+    local explanation="$3"
+    local timestamp
+    timestamp=$(date -Iseconds)
+    
+    init_history
+    
+    local entry
+    entry=$(jq -n \
+        --arg q "$question" \
+        --arg c "$command" \
+        --arg e "$explanation" \
+        --arg t "$timestamp" \
+        '{question: $q, command: $c, explanation: $e, timestamp: $t}')
+    
+    local temp_file
+    temp_file=$(mktemp)
+    jq ". + [$entry]" "$HISTORY_FILE" > "$temp_file" && mv "$temp_file" "$HISTORY_FILE"
+}
+
+show_history() {
+    init_history
+    
+    if [[ ! -s "$HISTORY_FILE" ]] || [[ $(jq 'length' "$HISTORY_FILE") -eq 0 ]]; then
+        echo "No history found."
+        return
+    fi
+    
+    local temp_file
+    temp_file=$(mktemp)
+    # Get last 100 entries, reverse order (newest first)
+    jq -r 'if length > 100 then .[-100:] else . end | reverse | .[] | "\(.timestamp) | \(.command) | \(.question) | \(.explanation)"' "$HISTORY_FILE" > "$temp_file"
+    
+    local selection
+    selection=$(cat "$temp_file" | \
+        fzf \
+            --with-nth=2,3 \
+            --delimiter='|' \
+            --preview='echo "Command: {2}
+
+Question: {3}
+
+Explanation: {4}"' \
+            --preview-window=up:5:wrap \
+            --header="Select command to run (Enter=run, q/Esc=quit)" \
+            --height=80% \
+            --layout=reverse)
+    
+    rm -f "$temp_file"
+    
+    if [[ -n "$selection" ]]; then
+        local cmd
+        cmd=$(echo "$selection" | cut -d'|' -f2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        echo "Running: $cmd"
+        history -s "$cmd"
+        eval "$cmd"
+    fi
+}
+
+call_ai() {
+    local question="$1"
+    
+    if [[ -z "$API_KEY" ]]; then
+        echo "Error: API key not configured. Run 'ask -c' to configure." >&2
+        return 1
+    fi
+    
+    local system_prompt
+    system_prompt=$(cat << 'EOF'
+You are a helpful command-line assistant. Given a user's question, provide relevant shell commands that would help them.
+
+IMPORTANT: You must respond in the following JSON format only:
+{
+    "commands": [
+        {
+            "command": "the actual command to run",
+            "explanation": "brief explanation of what this command does",
+            "danger_level": "safe|warning|dangerous"
+        }
+    ]
+}
+
+Rules:
+- Provide 3-5 relevant commands
+- Mark dangerous commands (rm -rf, dd, etc.) as "dangerous"
+- Mark potentially destructive commands as "warning"
+- Keep commands simple and copy-pasteable
+- Include common variations if useful
+- If the question is unclear, provide the most likely interpretation
+EOF
+)
+    
+    local response
+    response=$(curl -s -w "\n%{http_code}" "$ENDPOINT" \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $API_KEY" \
+        -H "HTTP-Referer: https://github.com/ask-cli" \
+        -H "X-Title: Ask CLI" \
+        -d "$(jq -n \
+            --arg model "$MODEL" \
+            --arg system "$system_prompt" \
+            --arg user "$question" \
+            '{
+                model: $model,
+                messages: [
+                    {role: "system", content: $system},
+                    {role: "user", content: $user}
+                ]
+            }')" 2>/dev/null)
+    
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+    local body
+    body=$(echo "$response" | sed '$d')
+    
+    if [[ "$http_code" != "200" ]]; then
+        echo "Error: API request failed (HTTP $http_code)" >&2
+        echo "$body" | jq -r '.error.message // .' 2>/dev/null || echo "$body" >&2
+        return 1
+    fi
+    
+    echo "$body"
+}
+
+select_and_run() {
+    local question="$1"
+    local ai_response="$2"
+    
+    local commands_json
+    commands_json=$(echo "$ai_response" | jq -r '.choices[0].message.content')
+    
+    if ! echo "$commands_json" | jq -e '.commands' > /dev/null 2>&1; then
+        echo "Error: Invalid response from AI" >&2
+        echo "$commands_json" >&2
+        return 1
+    fi
+    
+    local temp_commands
+    temp_commands=$(mktemp)
+    echo "$commands_json" > "$temp_commands"
+    
+    local selected_line
+    selected_line=$(jq -r '.commands[] | "[\(.danger_level)] \(.command)"' "$temp_commands" | \
+        fzf \
+            --preview='jq -r ".commands[] | select(.command == \"$(echo {} | sed '\''s/^\[.*\] //'\'')\") | .explanation" '"$temp_commands" \
+            --preview-window=right:50%:wrap \
+            --bind='i:execute(jq -r ".commands[] | select(.command == \"$(echo {} | sed '\''s/^\[.*\] //'\'')\") | \"Command: \(.command)\n\nExplanation: \(.explanation)\n\nDanger Level: \(.danger_level)\"" '"$temp_commands"' | less -R)' \
+            --header="Select a command (Enter=run, i=detailed info, q=quit)" \
+            --height=80% \
+            --layout=reverse)
+    
+    rm -f "$temp_commands"
+    
+    if [[ -n "$selected_line" ]]; then
+        local cmd
+        cmd=$(echo "$selected_line" | sed 's/^\[[^]]*\] //')
+        
+        local explanation
+        explanation=$(echo "$commands_json" | jq -r --arg cmd "$cmd" '.commands[] | select(.command == $cmd) | .explanation')
+        
+        add_to_history "$question" "$cmd" "$explanation"
+        
+        echo "Running: $cmd"
+        echo ""
+        history -s "$cmd"
+        eval "$cmd"
+    fi
+}
+
+main() {
+    load_config
+    
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 0
+    fi
+    
+    case "$1" in
+        -c|--config)
+            config_interactive
+            exit 0
+            ;;
+        -h|--history)
+            show_history
+            exit 0
+            ;;
+        -k|--key)
+            if [[ -z "$2" ]]; then
+                echo "Error: API key required" >&2
+                exit 1
+            fi
+            API_KEY=$(echo "$2" | tr -d '[:cntrl:]')
+            save_config
+            exit 0
+            ;;
+        -m|--model)
+            if [[ -z "$2" ]]; then
+                echo "Error: Model name required" >&2
+                exit 1
+            fi
+            MODEL=$(echo "$2" | tr -d '[:cntrl:]')
+            save_config
+            exit 0
+            ;;
+        --help|-help)
+            show_help
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            show_help
+            exit 1
+            ;;
+        *)
+            local question="$*"
+            
+            if ! command -v jq &> /dev/null; then
+                echo "Error: jq is required. Install with: sudo apt install jq" >&2
+                exit 1
+            fi
+            
+            if ! command -v fzf &> /dev/null; then
+                echo "Error: fzf is required. Install with: sudo apt install fzf" >&2
+                exit 1
+            fi
+            
+            if ! command -v curl &> /dev/null; then
+                echo "Error: curl is required. Install with: sudo apt install curl" >&2
+                exit 1
+            fi
+            
+            echo "Asking AI: $question"
+            echo ""
+            
+            local ai_response
+            ai_response=$(call_ai "$question")
+            
+            if [[ $? -ne 0 ]]; then
+                echo "$ai_response"
+                exit 1
+            fi
+            
+            select_and_run "$question" "$ai_response"
+            ;;
+    esac
+}
+
+main "$@"

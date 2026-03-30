@@ -1,0 +1,20 @@
+Package: ask-cli
+Version: 1.0.2
+Section: utils
+Priority: optional
+Architecture: all
+Depends: bash (>= 4.0), jq, fzf, curl
+Maintainer: Ask CLI <ask-cli@example.com>
+Description: AI-powered command line assistant
+ Ask CLI is a command-line tool that helps you find and run
+ shell commands by asking questions in natural language.
+ .
+ It uses OpenRouter API to get AI-powered command suggestions
+ and presents them in a selectable list using fzf.
+ .
+ Features:
+  - Ask questions in natural language to get command suggestions
+  - Select commands from a list using fzf
+  - View detailed explanations for each command
+  - Command history with search functionality
+  - Configurable API endpoint and model
