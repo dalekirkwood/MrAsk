@@ -283,7 +283,7 @@ EOF
     local http_code
     http_code=$(echo "$response" | tail -n1)
     local body
-    body=$(echo "$response" | sed '$d')
+    body=$(echo "$response" | sed '$d' | sed '/^[[:space:]]*$/d')
     
     if [[ "$http_code" != "200" ]]; then
         echo "Error: API request failed (HTTP $http_code)" >&2
