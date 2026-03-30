@@ -17,6 +17,16 @@ AI-powered command line assistant for Debian-based systems. Ask questions in nat
 
 ## Installation
 
+### Via Snap Store (Recommended)
+
+```bash
+sudo snap install mrask
+```
+
+Or install from Ubuntu Software (GUI app store).
+
+### Via .deb Package
+
 ```bash
 # Download the .deb package
 wget https://github.com/dalekirkwood/MrAsk/releases/download/v1.0.2/ask-cli_1.0.2_all.deb

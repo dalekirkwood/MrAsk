@@ -1,10 +1,17 @@
 #!/bin/bash
 
-CONFIG_FILE="$HOME/.config/ask/config.conf"
-HISTORY_FILE="$HOME/.config/ask/history.json"
+# Support both snap and regular installations
+if [[ -n "$SNAP_USER_DATA" ]]; then
+    CONFIG_DIR="$SNAP_USER_DATA/.config/ask"
+else
+    CONFIG_DIR="$HOME/.config/ask"
+fi
+
+CONFIG_FILE="$CONFIG_DIR/config.conf"
+HISTORY_FILE="$CONFIG_DIR/history.json"
 CACHE_DIR="$HOME/.cache/ask"
 
-mkdir -p "$(dirname "$CONFIG_FILE")"
+mkdir -p "$CONFIG_DIR"
 mkdir -p "$CACHE_DIR"
 
 DEFAULT_MODEL="openrouter/auto"
