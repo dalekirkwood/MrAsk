@@ -4,7 +4,7 @@ AI-powered command line assistant for Debian-based systems. Ask questions in nat
 
 ![Version](https://img.shields.io/badge/version-1.0.2-blue)
 ![Platform](https://img.shields.io/badge/platform-Linux-green)
-![License](https://img.shields.io/badge/license-MIT-yellow)
+![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-lightgrey)
 
 ## Features
 
@@ -168,7 +168,16 @@ Contributions welcome! Please:
 
 ## License
 
-MIT License - feel free to use, modify, and distribute.
+This project is licensed under the **Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)**.
+
+- ✅ **Personal use** - Free to use for personal, educational, and non-commercial purposes
+- ✅ **Share** - You can share the software with others
+- ✅ **Modify** - You can modify and create derivatives
+- ❌ **Commercial use** - Commercial use is prohibited without explicit permission
+
+See [LICENSE](LICENSE) for full details.
+
+**For commercial licensing inquiries, please contact the author.**
 
 ## Credits
 
