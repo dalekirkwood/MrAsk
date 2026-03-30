@@ -26,11 +26,11 @@ spinner() {
     local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
     while kill -0 "$pid" 2>/dev/null; do
         local temp=${spinstr#?}
-        printf "\r%s Querying AI... (%s)" "${spinstr:0:1}" "$MODEL"
+        printf "\r%s Querying AI... (%s)" "${spinstr:0:1}" "$MODEL" >&2
         spinstr=$temp${spinstr:0:1}
         sleep $delay
     done
-    printf "\r\n"
+    printf "\r\n" >&2
 }
 
 # Get cache key for a question
@@ -78,6 +78,27 @@ save_cache() {
     fi
     
     echo "$response" > "$cache_file"
+}
+
+extract_commands_json() {
+    local content="$1"
+    local cleaned
+    local extracted
+
+    cleaned=$(printf '%s' "$content" | sed '/^[[:space:]]*```json[[:space:]]*$/d; /^[[:space:]]*```[[:space:]]*$/d')
+
+    if echo "$cleaned" | jq -e '.commands and (.commands | type == "array")' > /dev/null 2>&1; then
+        echo "$cleaned"
+        return 0
+    fi
+
+    extracted=$(printf '%s' "$cleaned" | jq -Rrs 'capture("(?s)\\{.*\\}") | .string' 2>/dev/null)
+    if [[ -n "$extracted" ]] && echo "$extracted" | jq -e '.commands and (.commands | type == "array")' > /dev/null 2>&1; then
+        echo "$extracted"
+        return 0
+    fi
+
+    return 1
 }
 
 load_config() {
@@ -301,12 +322,15 @@ select_and_run() {
     local question="$1"
     local ai_response="$2"
     
+    local commands_content
+    commands_content=$(echo "$ai_response" | jq -r '.choices[0].message.content // ""')
+
     local commands_json
-    commands_json=$(echo "$ai_response" | jq -r '.choices[0].message.content')
-    
-    if ! echo "$commands_json" | jq -e '.commands' > /dev/null 2>&1; then
+    commands_json=$(extract_commands_json "$commands_content")
+
+    if [[ -z "$commands_json" ]]; then
         echo "Error: Invalid response from AI" >&2
-        echo "$commands_json" >&2
+        echo "$commands_content" >&2
         return 1
     fi
     
