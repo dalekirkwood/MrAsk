@@ -1,4 +1,5 @@
 name: mrask
+title: MrAsk
 base: core22
 version: '1.0.2'
 summary: AI-powered command line assistant
@@ -14,6 +15,12 @@ description: |
   - Command explanations and danger warnings
   - Command history with explanations
   - Configurable AI models via OpenRouter
+
+license: CC-BY-NC-4.0
+contact: dalekirkwood@gmail.com
+source-code: https://github.com/dalekirkwood/MrAsk
+issues: https://github.com/dalekirkwood/MrAsk/issues
+website: https://github.com/dalekirkwood/MrAsk
 
 grade: stable
 confinement: strict

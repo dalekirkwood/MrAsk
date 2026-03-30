@@ -27,9 +27,10 @@ assets:
   stage-snaps: null
 directories: !!set {}
 files: !!set {}
-outdated_dirs: []
+outdated_dirs:
+- .git
 outdated_files:
-- snap/gui/mrask.desktop
+- snap/snapcraft.yaml
 part_properties:
   after: []
   build-attributes: []
