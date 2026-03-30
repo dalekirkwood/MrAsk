@@ -312,6 +312,6 @@ project_options:
     version:
       part_name: null
       updated: false
-      value: 1.0.3
+      value: 1.0.4
   project_vars_part_name: null
   target_arch: amd64

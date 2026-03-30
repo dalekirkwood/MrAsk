@@ -1,7 +1,7 @@
 # Environment
 ## Application environment
 export SNAPCRAFT_PARALLEL_BUILD_COUNT="16"
-export SNAPCRAFT_PROJECT_VERSION="1.0.3"
+export SNAPCRAFT_PROJECT_VERSION="1.0.4"
 export SNAPCRAFT_PROJECT_GRADE="stable"
 export SNAPCRAFT_PROJECT_DIR="/home/dale/Syncthing/Development/Tools/Ask_CMD"
 export SNAPCRAFT_PROJECT_NAME="mrask"

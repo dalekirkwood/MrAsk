@@ -1,7 +1,7 @@
 name: mrask
 title: MrAsk
 base: core22
-version: '1.0.3'
+version: '1.0.4'
 summary: AI-powered command line assistant
 description: |
   MrAsk is an AI-powered command line assistant for Debian-based systems.
@@ -45,6 +45,14 @@ parts:
 
 apps:
   mrask:
+    command: bin/mrask
+    plugs:
+      - home
+      - network
+      - removable-media
+    environment:
+      ASK_SNAP_MODE: "1"
+  ask:
     command: bin/mrask
     plugs:
       - home
