@@ -14,8 +14,25 @@ CACHE_DIR="$HOME/.cache/ask"
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$CACHE_DIR"
 
-DEFAULT_MODEL="openrouter/auto"
+# Fast models: openai/gpt-4o-mini, google/gemini-2.5-flash-preview
+DEFAULT_MODEL="openai/gpt-4o-mini"
 DEFAULT_ENDPOINT="https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_TIMEOUT="60"
+
+# Spinner function for progress indicator
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\'
+    while ps -p $pid > /dev/null 2>&1; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
+}
 
 load_config() {
     if [[ -f "$CONFIG_FILE" ]]; then
@@ -24,6 +41,7 @@ load_config() {
     API_KEY=$(echo "${API_KEY:-}" | tr -d '[:cntrl:]')
     MODEL=$(echo "${MODEL:-$DEFAULT_MODEL}" | tr -d '[:cntrl:]')
     ENDPOINT=$(echo "${ENDPOINT:-$DEFAULT_ENDPOINT}" | tr -d '[:cntrl:]')
+    TIMEOUT=$(echo "${TIMEOUT:-$DEFAULT_TIMEOUT}" | tr -d '[:cntrl:]')
 }
 
 save_config() {
@@ -31,10 +49,12 @@ save_config() {
     API_KEY=$(echo "$API_KEY" | tr -d '[:cntrl:]')
     MODEL=$(echo "$MODEL" | tr -d '[:cntrl:]')
     ENDPOINT=$(echo "$ENDPOINT" | tr -d '[:cntrl:]')
+    TIMEOUT=$(echo "${TIMEOUT:-$DEFAULT_TIMEOUT}" | tr -d '[:cntrl:]')
     cat > "$CONFIG_FILE" << EOF
 API_KEY="$API_KEY"
 MODEL="$MODEL"
 ENDPOINT="$ENDPOINT"
+TIMEOUT="$TIMEOUT"
 EOF
     chmod 600 "$CONFIG_FILE"
     echo "Configuration saved to $CONFIG_FILE"
@@ -45,6 +65,12 @@ config_interactive() {
     echo "====================="
     echo ""
     
+    echo "Recommended fast models:"
+    echo "  openai/gpt-4o-mini        (fast, cheap)"
+    echo "  google/gemini-2.5-flash-preview (fast)"
+    echo "  google/gemini-2.0-flash-lite-preview-02-05 (fastest)"
+    echo ""
+    
     read -rp "Enter your OpenRouter API Key: " -s input_key
     echo ""
     if [[ -n "$input_key" ]]; then
@@ -53,12 +79,17 @@ config_interactive() {
     
     read -rp "Enter model (default: $DEFAULT_MODEL) [$MODEL]: " input_model
     if [[ -n "$input_model" ]]; then
-        MODEL="$input_model"
+        MODEL=$(echo "$input_model" | tr -d '[:cntrl:]')
+    fi
+    
+    read -rp "Enter timeout in seconds (default: $DEFAULT_TIMEOUT) [$TIMEOUT]: " input_timeout
+    if [[ -n "$input_timeout" ]]; then
+        TIMEOUT=$(echo "$input_timeout" | tr -d '[:cntrl:]')
     fi
     
     read -rp "Enter API endpoint (default: $DEFAULT_ENDPOINT) [$ENDPOINT]: " input_endpoint
     if [[ -n "$input_endpoint" ]]; then
-        ENDPOINT="$input_endpoint"
+        ENDPOINT=$(echo "$input_endpoint" | tr -d '[:cntrl:]')
     fi
     
     save_config
@@ -74,7 +105,13 @@ Usage:
   ask -h, --history   View command history
   ask -k, --key KEY   Set API key directly
   ask -m, --model MODEL  Set model directly
+  ask -t, --timeout SEC  Set timeout in seconds (default: 60)
   ask --help          Show this help
+
+Recommended fast models:
+  openai/gpt-4o-mini
+  google/gemini-2.5-flash-preview
+  google/gemini-2.0-flash-lite-preview-02-05
 
 During command selection:
   Enter   Run the selected command
@@ -186,8 +223,14 @@ Rules:
 EOF
 )
     
+    # Show progress indicator
+    printf "Querying AI (%s) " "$MODEL"
+    
     local response
-    response=$(curl -s -w "\n%{http_code}" "$ENDPOINT" \
+    local curl_pid
+    
+    # Run curl in background with timeout
+    response=$(curl -s -w "\n%{http_code}" --max-time "${TIMEOUT:-60}" "$ENDPOINT" \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $API_KEY" \
         -H "HTTP-Referer: https://github.com/ask-cli" \
@@ -202,7 +245,28 @@ EOF
                     {role: "system", content: $system},
                     {role: "user", content: $user}
                 ]
-            }')" 2>/dev/null)
+            }')" 2>/dev/null) &
+    
+    curl_pid=$!
+    
+    # Show spinner while curl runs
+    spinner $curl_pid
+    
+    # Wait for curl to complete
+    wait $curl_pid
+    local curl_exit=$?
+    
+    printf "\n"
+    
+    # Check if curl timed out
+    if [[ $curl_exit -eq 28 ]]; then
+        echo "Error: Request timed out after ${TIMEOUT:-60} seconds" >&2
+        echo "Try a faster model or increase timeout with: ask -c" >&2
+        return 1
+    elif [[ $curl_exit -ne 0 ]]; then
+        echo "Error: Connection failed (exit code: $curl_exit)" >&2
+        return 1
+    fi
     
     local http_code
     http_code=$(echo "$response" | tail -n1)
@@ -296,6 +360,16 @@ main() {
             fi
             MODEL=$(echo "$2" | tr -d '[:cntrl:]')
             save_config
+            exit 0
+            ;;
+        -t|--timeout)
+            if [[ -z "$2" ]]; then
+                echo "Error: Timeout value required" >&2
+                exit 1
+            fi
+            TIMEOUT=$(echo "$2" | tr -d '[:cntrl:]')
+            save_config
+            echo "Timeout set to $TIMEOUT seconds"
             exit 0
             ;;
         --help|-help)

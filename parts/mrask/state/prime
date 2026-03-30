@@ -73,6 +73,7 @@ files: !!set
   ask-cli_1.0.0_all.deb: null
   ask-cli_1.0.1_all.deb: null
   ask-cli_1.0.2_all.deb: null
+  ask-cli_1.0.3_all.deb: null
   bin/mrask: null
   etc/bash.bashrc: null
   etc/gnutls/config: null
@@ -311,6 +312,6 @@ project_options:
     version:
       part_name: null
       updated: false
-      value: 1.0.2
+      value: 1.0.3
   project_vars_part_name: null
   target_arch: amd64

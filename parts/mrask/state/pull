@@ -30,6 +30,9 @@ files: !!set {}
 outdated_dirs:
 - .git
 outdated_files:
+- ask-cli/DEBIAN/control
+- ask-cli/usr/bin/ask
+- ask-cli_1.0.3_all.deb
 - snap/snapcraft.yaml
 part_properties:
   after: []
