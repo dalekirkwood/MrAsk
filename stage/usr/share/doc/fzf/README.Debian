@@ -1,0 +1,61 @@
+=====================
+  Shell Integration
+=====================
+
+Add the following line to your shell configuration file.
+
+ * bash (config file at ~/.bashrc)
+ 
+     # Set up fzf key bindings and fuzzy completion
+     eval "$(fzf --bash)"
+ 
+ * zsh (config file at ~/.zshrc)
+ 
+     # Set up fzf key bindings and fuzzy completion
+     source <(fzf --zsh)
+ 
+ * fish (config file at ~/.config/fish/config.fish)
+ 
+     # Set up fzf key bindings
+     fzf --fish | source
+ 
+The `--bash`, `--zsh`, `--fish` options are available after fzf 0.48.0.
+More information can be found in the upstream README file:
+ 
+  /usr/share/doc/fzf/README.md.gz
+
+===========================================
+  Shell Integration (The traditional way)
+===========================================
+
+ * bash (config file at ~/.bashrc)
+
+     source /usr/share/doc/fzf/examples/key-bindings.bash
+     source /usr/share/doc/fzf/examples/completion.bash
+
+   The bash completion can be sourced automatically using the following
+   line after installing the "bash-completion" package.
+
+     source /etc/bash_completion
+
+ * zsh (config file at ~/.zshrc)
+     
+     source /usr/share/doc/fzf/examples/key-bindings.zsh
+     source /usr/share/doc/fzf/examples/completion.zsh
+
+ * fish
+
+   mkdir -p ~/.config/fish/functions/
+   echo fzf_key_bindings > ~/.config/fish/functions/fish_user_key_bindings.fish
+
+===================
+  Vim Integration
+===================
+
+The straightforward way to use fzf.vim is appending this line to your vimrc:
+
+   source /usr/share/doc/fzf/examples/fzf.vim
+
+More information can be found in the upstream README-VIM file:
+ 
+  /usr/share/doc/fzf/README-VIM.md.gz

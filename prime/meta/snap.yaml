@@ -1,0 +1,36 @@
+name: mrask
+version: 1.0.2
+summary: AI-powered command line assistant
+description: |
+  MrAsk is an AI-powered command line assistant for Debian-based systems.
+
+  Ask questions in natural language and get shell command suggestions
+  via an interactive selectable list using fzf and OpenRouter AI.
+
+  Features:
+  - Natural language command queries
+  - Interactive fzf-based selection
+  - Command explanations and danger warnings
+  - Command history with explanations
+  - Configurable AI models via OpenRouter
+architectures:
+- amd64
+base: core22
+apps:
+  mrask:
+    command: bin/mrask
+    plugs:
+    - home
+    - network
+    - removable-media
+    environment:
+      ASK_SNAP_MODE: '1'
+confinement: strict
+grade: stable
+environment:
+  LD_LIBRARY_PATH: ${SNAP_LIBRARY_PATH}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}:$SNAP/usr/lib:$SNAP/usr/lib/x86_64-linux-gnu
+  PATH: $SNAP/usr/sbin:$SNAP/usr/bin:$SNAP/sbin:$SNAP/bin:$PATH
+hooks:
+  configure:
+    plugs:
+    - home

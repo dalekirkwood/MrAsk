@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+
+echo "Ask CLI installed successfully!"
+echo ""
+echo "Quick start:"
+echo "  1. Configure: ask -c"
+echo "  2. Ask: ask how do I find large files"
+echo ""
+echo "For help: ask --help"

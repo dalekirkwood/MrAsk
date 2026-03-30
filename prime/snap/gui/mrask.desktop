@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=MrAsk
+Comment=AI-powered command line assistant
+Exec=mrask
+Type=Application
+Terminal=true
+Categories=System;TerminalEmulator;
+Keywords=terminal;ai;assistant;command;shell;

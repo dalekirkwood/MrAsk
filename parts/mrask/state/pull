@@ -1,0 +1,92 @@
+assets:
+  source-details: null
+  stage-packages:
+  - bash=5.2.37-2ubuntu5
+  - curl=8.14.1-2ubuntu1.2
+  - fzf=0.60.3-1
+  - jq=1.8.1-3ubuntu1
+  - less=668-1
+  - libcurl4t64=8.14.1-2ubuntu1.2
+  - libdb5.3t64=5.3.28+dfsg2-9ubuntu1
+  - libgnutls30t64=3.8.9-3ubuntu2.1
+  - libhogweed6t64=3.10.1-1
+  - libjq1=1.8.1-3ubuntu1
+  - libldap-common=2.6.10+dfsg-1ubuntu2.1
+  - libldap2=2.6.10+dfsg-1ubuntu2.1
+  - libnettle8t64=3.10.1-1
+  - libnghttp2-14=1.64.0-1.1ubuntu1
+  - libonig5=6.9.10-1
+  - libpsl5t64=0.21.2-1.1build1
+  - librtmp1=2.4+20151223.gitfa8646d.1-2build8
+  - libsasl2-2=2.1.28+dfsg1-9ubuntu1
+  - libsasl2-modules-db=2.1.28+dfsg1-9ubuntu1
+  - libssh2-1t64=1.11.1-1build1
+  - libssl3t64=3.5.3-1ubuntu3
+  - libunistring5=1.3-2
+  - openssl-provider-legacy=3.5.3-1ubuntu3
+  stage-snaps: null
+directories: !!set {}
+files: !!set {}
+outdated_dirs: []
+outdated_files:
+- snap/gui/mrask.desktop
+part_properties:
+  after: []
+  build-attributes: []
+  build-environment: []
+  build-packages:
+  - jq
+  - curl
+  - fzf
+  - bash
+  build-snaps: []
+  disable-parallel: false
+  organize:
+    ask-cli/usr/bin/ask: bin/mrask
+  overlay:
+  - '*'
+  overlay-packages: []
+  overlay-script: null
+  override-build: null
+  override-prime: null
+  override-pull: null
+  override-stage: null
+  permissions: []
+  plugin: dump
+  prime:
+  - '*'
+  source: .
+  source-branch: ''
+  source-channel: null
+  source-checksum: ''
+  source-commit: ''
+  source-depth: 0
+  source-subdir: ''
+  source-submodules: null
+  source-tag: ''
+  source-type: ''
+  stage:
+  - '*'
+  stage-packages:
+  - jq
+  - curl
+  - fzf
+  - bash
+  - less
+  stage-snaps: []
+partition: null
+partitions_contents: {}
+project_options:
+  application_name: snapcraft
+  arch_triplet: x86_64-linux-gnu
+  project_vars:
+    grade:
+      part_name: null
+      updated: false
+      value: stable
+    version:
+      part_name: null
+      updated: false
+      value: 1.0.2
+  project_vars_part_name: null
+  target_arch: amd64
